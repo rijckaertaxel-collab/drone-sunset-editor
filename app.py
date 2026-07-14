@@ -9,32 +9,10 @@ from supabase import create_client, Client
 # --- 1. PAGINA INSTELLINGEN & CSS STYLING ---
 st.set_page_config(page_title="DroneLuxe Editor & Cloud", page_icon="☁️", layout="wide")
 
-# Professionele CSS om de look & feel direct te upgraden naar een moderne SaaS-tool
+# Professionele CSS om de app een strakke SaaS-look te geven
 st.markdown("""
 <style>
-    /* Styling voor de navigatiebalk */
-    .nav-container {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        background-color: #1E1E24;
-        padding: 10px 20px;
-        border-radius: 10px;
-        margin-bottom: 25px;
-        border: 1px solid #333;
-    }
-    .nav-title {
-        font-size: 22px;
-        font-weight: bold;
-        color: #00C9FF;
-        text-decoration: none;
-    }
-    .nav-user {
-        font-size: 14px;
-        color: #AEB2C6;
-    }
-    
-    /* Grote heldere knoppen */
+    /* Algemene button styling tweaks */
     div.stButton > button {
         border-radius: 8px !important;
         font-weight: 600 !important;
@@ -51,6 +29,14 @@ st.markdown("""
     .feature-card h3 {
         color: #00C9FF !important;
         margin-top: 0;
+    }
+    
+    /* Subtiele styling voor de logo-tekst knoppen */
+    .logo-container {
+        font-size: 22px;
+        font-weight: 800;
+        color: #00C9FF;
+        padding-top: 5px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -69,7 +55,7 @@ if 'user' not in st.session_state:
 if 'session_data' not in st.session_state:
     st.session_state.session_data = None
 
-# Pagina status bijhouden (om te navigeren tussen Home, Login, Editor, Galerij, Account)
+# Pagina status bijhouden (Home, Login, Register, Editor, Gallery, Account)
 if 'page' not in st.session_state:
     st.session_state.page = "Home"
 
@@ -83,14 +69,14 @@ if st.session_state.session_data is not None:
     except Exception:
         pass
 
-# --- 3. DYNAMISCHE NAVIGATIEBALK (BOVENAAN) ---
+# --- 3. DYNAMISCHE NAVIGATIEBALK ---
 def render_navbar():
     if st.session_state.user is None:
         # NAVIGATIE NIET INGELOGD
         col_logo, col_buttons = st.columns([2, 2])
         with col_logo:
-            # Als je op de titel klikt, ga je ook direct naar Home
-            if st.button("☁️ DroneLuxe | Premium Photo Cloud", key="logo_home", variant="text"):
+            # FIX: variant="text" is hier overal verwijderd om crashes te voorkomen!
+            if st.button("☁️ DroneLuxe | Premium Cloud", key="logo_home"):
                 st.session_state.page = "Home"
                 st.rerun()
         with col_buttons:
@@ -111,15 +97,15 @@ def render_navbar():
         # NAVIGATIE WEL INGELOGD
         col_logo, col_menu, col_user = st.columns([2, 5, 2])
         with col_logo:
-            if st.button("☁️ DroneLuxe", key="logo_home_user", variant="text"):
+            if st.button("☁️ DroneLuxe", key="logo_home_user"):
                 st.session_state.page = "Home"
                 st.rerun()
         with col_menu:
-            # We bepalen welke index geselecteerd moet staan op basis van de huidige pagina
+            # Bepaal welke index getoond moet worden op basis van actieve pagina
             page_to_index = {"Home": 0, "Editor": 1, "Gallery": 2, "Account": 3}
-            default_index = page_to_index.get(st.session_state.page, 1)
+            default_index = page_to_index.get(st.session_state.page, 0)
             
-            # Horizontale pagina selectie inclusief Home!
+            # Horizontale navigatie tabs
             selected = st.segmented_control(
                 "Navigatie",
                 options=["🏠 Home", "✨ Editor", "🖼️ Mijn Galerij", "👤 Mijn Account"],
@@ -148,6 +134,7 @@ def render_navbar():
                 st.session_state.page = "Home"
                 st.rerun()
     st.write("---")
+
 render_navbar()
 
 # --- FOTO BEWERKINGSHULPMIDDELEN ---
@@ -199,8 +186,6 @@ def apply_preset(img, preset_name):
     return img
 
 
-# --- 4. PAGINA ROUTING & LOGICA ---
-
 # ==================== PAGINA: HOME (LANDINGPAGE) ====================
 if st.session_state.page == "Home":
     st.markdown("""
@@ -210,7 +195,6 @@ if st.session_state.page == "Home":
     </div>
     """, unsafe_allow_html=True)
     
-    # Prachtige side-by-side preview sectie
     col_demo1, col_demo2 = st.columns(2)
     with col_demo1:
         st.markdown("""
@@ -228,19 +212,21 @@ if st.session_state.page == "Home":
         </div>
         """, unsafe_allow_html=True)
         
+        # Stuur de gebruiker naar registreren als ze nog geen account hebben
         if st.button("Direct gratis starten 🚀", use_container_width=True, type="primary"):
-            st.session_state.page = "Register"
+            if st.session_state.user is None:
+                st.session_state.page = "Register"
+            else:
+                st.session_state.page = "Editor"
             st.rerun()
 
     with col_demo2:
         st.subheader("📸 Preview van onze filters")
-        # Toon een mooie mock-up of default foto ter illustratie
-        st.info("Log in om je eigen drone-foto's te uploaden en te bewerken!")
+        if st.session_state.user is None:
+            st.info("Log in om je eigen drone-foto's te uploaden en te bewerken!")
         try:
-            # We laden een mooie placeholder zonsondergang in
             response = requests.get("https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80")
             img_placeholder = Image.open(BytesIO(response.content))
-            
             preset_demo = apply_preset(img_placeholder, "Golden Hour Sunset 🌅")
             
             c_p1, c_p2 = st.columns(2)
@@ -295,7 +281,6 @@ elif st.session_state.page in ["Login", "Register"]:
                         except Exception as e:
                             st.error(f"Registratie mislukt: {e}")
         
-        # FIX: variant="secondary" is hier verwijderd om de crash te voorkomen!
         if st.session_state.page == "Login":
             if st.button("Nog geen account? Registreer hier", use_container_width=True):
                 st.session_state.page = "Register"
@@ -304,11 +289,13 @@ elif st.session_state.page in ["Login", "Register"]:
             if st.button("Al een account? Log hier in", use_container_width=True):
                 st.session_state.page = "Login"
                 st.rerun()
-# ==================== PAGINA: EDITOR (WEL INGELOGD) ====================
+
+
+# ==================== PAGINA: EDITOR ====================
 elif st.session_state.page == "Editor":
     st.subheader("⚡ Premium Photo Editor")
     
-    uploaded_file = st.file_uploader("Sleep je drone-foto hiernaartoe...", type=["jpg", "jpeg", "png"])
+    uploaded_file = st.file_uploader("Drag and drop je drone-foto hiernaartoe...", type=["jpg", "jpeg", "png"])
 
     if uploaded_file is not None:
         original_image = Image.open(uploaded_file)
@@ -333,7 +320,6 @@ elif st.session_state.page == "Editor":
             st.subheader("Resultaat ✨")
             st.image(processed_image, use_container_width=True)
             
-            # Sla tijdelijk op voor download / upload
             processed_image.save("temp.jpg", "JPEG", quality=95)
             with open("temp.jpg", "rb") as file:
                 file_bytes = file.read()
@@ -364,7 +350,7 @@ elif st.session_state.page == "Editor":
                             st.error(f"Fout bij opslaan: {e}")
 
 
-# ==================== PAGINA: MIJN CLOUD GALERIJ (WEL INGELOGD) ====================
+# ==================== PAGINA: MIJN CLOUD GALERIJ ====================
 elif st.session_state.page == "Gallery":
     st.subheader("🖼️ Jouw Persoonlijke Cloud Galerij")
     st.write("Alleen jij hebt toegang tot deze beelden.")
@@ -378,8 +364,6 @@ elif st.session_state.page == "Gallery":
             
         user_folder = st.session_state.user.id
         files = st.session_state.supabase.storage.from_("fotos").list(user_folder)
-        
-        # Filter om verborgen systeembestanden of lege mappen te negeren
         image_files = [f for f in files if f['name'] and (f['name'].endswith('.jpg') or f['name'].endswith('.png') or f['name'].endswith('.jpeg'))]
         
         if not image_files:
@@ -391,19 +375,16 @@ elif st.session_state.page == "Gallery":
                 full_path = f"{user_folder}/{file_name}"
                 
                 try:
-                    # Genereer beveiligde, tijdelijke URL
                     sign_response = st.session_state.supabase.storage.from_("fotos").create_signed_url(full_path, 60)
                     image_url = sign_response['signedURL']
                     
                     col_index = index % 3
                     with cols[col_index]:
-                        # Kaart-achtige weergave
                         st.markdown("<div class='feature-card'>", unsafe_allow_html=True)
                         st.image(image_url, use_container_width=True)
                         
                         btn_col1, btn_col2 = st.columns(2)
                         with btn_col1:
-                            # Downloadknop
                             response = requests.get(image_url)
                             if response.status_code == 200:
                                 st.download_button(
@@ -415,7 +396,6 @@ elif st.session_state.page == "Gallery":
                                     use_container_width=True
                                 )
                         with btn_col2:
-                            # Verwijderknop
                             if st.button("Wissen 🗑️", key=f"del_{file_name}_{index}", use_container_width=True):
                                 with st.spinner("Verwijderen..."):
                                     st.session_state.supabase.storage.from_("fotos").remove([full_path])
@@ -428,7 +408,7 @@ elif st.session_state.page == "Gallery":
         st.error(f"Kan je galerij niet laden: {e}")
 
 
-# ==================== PAGINA: MIJN ACCOUNT (WEL INGELOGD) ====================
+# ==================== PAGINA: MIJN ACCOUNT ====================
 elif st.session_state.page == "Account":
     st.subheader("👤 Mijn DroneLuxe Account")
     
