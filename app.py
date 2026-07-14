@@ -4,9 +4,15 @@ import math
 import uuid
 from supabase import create_client, Client
 
-# --- 1. SUPABASE CONNECTIE (VEILIG VIA SECRETS) ---
+# --- 1. SUPABASE CONNECTIE CONTROLE ---
 @st.cache_resource
 def init_connection():
+    # Controleer of de secrets überhaupt bestaan
+    if "SUPABASE_URL" not in st.secrets or "SUPABASE_KEY" not in st.secrets:
+        st.error("❌ De Secrets (SUPABASE_URL of SUPABASE_KEY) zijn niet gevonden in je Streamlit Dashboard!")
+        st.info("Ga naar share.streamlit.io -> Drie puntjes naast je app -> Settings -> Secrets en plak ze daar erin.")
+        st.stop()
+        
     url = st.secrets["SUPABASE_URL"]
     key = st.secrets["SUPABASE_KEY"]
     return create_client(url, key)
@@ -14,7 +20,7 @@ def init_connection():
 try:
     supabase = init_connection()
 except Exception as e:
-    st.error("⚠️ Kan niet verbinden met Supabase. Heb je de Secrets ingesteld in Streamlit?")
+    st.error(f"⚠️ Verbinding met Supabase mislukt tijdens het opstarten: {e}")
     st.stop()
 
 # --- 2. SESSIE BEHEREN ---
@@ -25,33 +31,44 @@ if 'user' not in st.session_state:
 st.set_page_config(page_title="Drone Photo Editor Cloud", page_icon="☁️", layout="centered")
 st.title("☁️ Drone & Sunset Editor (Cloud)")
 
-# --- 3. INLOGSYSTEEM ---
+# --- 3. INLOGSYSTEEM MET EXACTE FOUTMELDINGEN ---
 if st.session_state.user is None:
-    st.info("Log in of maak gratis een account aan om de editor te gebruiken en foto's op te slaan in de cloud.")
+    st.info("Log in of maak gratis een account aan.")
     
     with st.container():
-        email = st.text_input("E-mailadres")
-        password = st.text_input("Wachtwoord", type="password")
+        email = st.text_input("E-mailadres", placeholder="voorbeeld@email.com")
+        password = st.text_input("Wachtwoord (minimaal 6 tekens)", type="password")
         
         c1, c2 = st.columns(2)
         with c1:
             if st.button("Log in", use_container_width=True):
-                try:
-                    response = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                    st.session_state.user = response.user
-                    st.rerun()
-                except Exception as e:
-                    st.error("Inloggen mislukt. Kloppen je gegevens?")
+                if not email or not password:
+                    st.warning("Vul alstublieft beide velden in.")
+                else:
+                    try:
+                        response = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                        st.session_state.user = response.user
+                        st.success("Succesvol ingelogd!")
+                        st.rerun()
+                    except Exception as e:
+                        # Dit laat de ECHTE fout van Supabase zien:
+                        st.error(f"Fout bij inloggen: {e}")
         with c2:
             if st.button("Registreer", use_container_width=True):
-                try:
-                    response = supabase.auth.sign_up({"email": email, "password": password})
-                    st.success("Account succesvol aangemaakt! Je kunt nu direct inloggen.")
-                except Exception as e:
-                    st.error(f"Registreren mislukt: {e}")
-    st.stop() # Blokkeer de editor als ze niet ingelogd zijn!
+                if not email or not password:
+                    st.warning("Vul alstublieft beide velden in.")
+                elif len(password) < 6:
+                    st.warning("Je wachtwoord moet minimaal 6 tekens lang zijn!")
+                else:
+                    try:
+                        response = supabase.auth.sign_up({"email": email, "password": password})
+                        st.success("Account aangemaakt! Probeer nu in te loggen.")
+                    except Exception as e:
+                        # Dit laat de ECHTE fout van Supabase zien bij registratie:
+                        st.error(f"Fout bij registreren: {e}")
+    st.stop()
 
-# --- ALS INGEILOGD: TOON ACCOUNT INFO ---
+# --- GEBRUIKER INGEILOGD ---
 c1, c2 = st.columns([3, 1])
 with c1:
     st.success(f"👋 Welkom, {st.session_state.user.email}")
@@ -63,7 +80,7 @@ with c2:
 
 st.write("---")
 
-# --- HIER BEGINT JOUW VERTROUWDE FOTO EDITOR ---
+# --- FOTO EDITOR FUNCTIES ---
 def crop_around_center(image, angle):
     if abs(angle) < 0.1:
         return image
@@ -77,10 +94,8 @@ def crop_around_center(image, angle):
     else:
         dest_w = (h * cos_a - w * sin_a) / (cos_a**2 - sin_a**2)
         dest_h = (w * cos_a - h * sin_a) / (cos_a**2 - sin_a**2)
-        
     dest_w = int(min(w, max(10, dest_w)) * 0.95)
     dest_h = int(min(h, max(10, dest_h)) * 0.95)
-    
     left = (w - dest_w) // 2
     top = (h - dest_h) // 2
     right = left + dest_w
@@ -117,14 +132,10 @@ uploaded_file = st.file_uploader("Upload je foto...", type=["jpg", "jpeg", "png"
 
 if uploaded_file is not None:
     original_image = Image.open(uploaded_file)
-    
     st.write("---")
     col_settings_1, col_settings_2 = st.columns(2)
     with col_settings_1:
-        preset = st.selectbox(
-            "Kies een preset style:",
-            ["HDR Natural (Herstel Schaduwen) 🍃", "Golden Hour Sunset 🌅", "Cinematic Sky ☁️", "Standaard (Geen filter)"]
-        )
+        preset = st.selectbox("Kies een preset style:", ["HDR Natural (Herstel Schaduwen) 🍃", "Golden Hour Sunset 🌅", "Cinematic Sky ☁️", "Standaard (Geen filter)"])
     with col_settings_2:
         angle_input = st.slider("Horizon roteren:", min_value=-15.0, max_value=15.0, value=0.0, step=0.5)
 
@@ -142,7 +153,6 @@ if uploaded_file is not None:
         st.subheader("Verbeterd ✨")
         st.image(processed_image, use_container_width=True)
         
-        # Ophalen van de data om lokaal op te slaan of naar cloud te sturen
         processed_image.save("temp.jpg", "JPEG", quality=95)
         with open("temp.jpg", "rb") as file:
             file_bytes = file.read()
@@ -150,25 +160,14 @@ if uploaded_file is not None:
         sub_c1, sub_c2 = st.columns(2)
         with sub_c1:
             st.download_button("Lokaal Downloaden 📥", data=file_bytes, file_name="drone_edited.jpg", mime="image/jpeg")
-            
         with sub_c2:
             if st.button("Save to Cloud ☁️"):
                 with st.spinner("Bezig met opslaan..."):
                     try:
-                        # We slaan de foto op in een mapje met het unieke ID van de gebruiker
                         file_name = f"{st.session_state.user.id}/{uuid.uuid4().hex}.jpg"
-                        
-                        # Upload naar de Supabase 'fotos' bucket
-                        supabase.storage.from_("fotos").upload(
-                            path=file_name,
-                            file=file_bytes,
-                            file_options={"content-type": "image/jpeg"}
-                        )
-                        
-                        # Genereer de public URL
+                        supabase.storage.from_("fotos").upload(path=file_name, file=file_bytes, file_options={"content-type": "image/jpeg"})
                         public_url = supabase.storage.from_("fotos").get_public_url(file_name)
-                        
                         st.success("Opgeslagen!")
                         st.markdown(f"[Bekijk je cloud-foto hier]({public_url})")
                     except Exception as e:
-                        st.error(f"Fout bij opslaan (bestaat de 'fotos' bucket in Supabase?): {e}")
+                        st.error(f"Fout bij opslaan: {e}")
