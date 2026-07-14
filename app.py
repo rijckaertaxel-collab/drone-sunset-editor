@@ -75,21 +75,17 @@ def render_navbar():
         # NAVIGATIE NIET INGELOGD
         col_logo, col_buttons = st.columns([2, 2])
         with col_logo:
-            # FIX: variant="text" is hier overal verwijderd om crashes te voorkomen!
+            # Deze knop brengt je naar Home
             if st.button("☁️ DroneLuxe | Premium Cloud", key="logo_home"):
                 st.session_state.page = "Home"
                 st.rerun()
         with col_buttons:
-            c1, c2, c3 = st.columns(3)
+            c1, c2 = st.columns(2)
             with c1:
-                if st.button("🏠 Home", key="nav_home_guest", use_container_width=True):
-                    st.session_state.page = "Home"
-                    st.rerun()
-            with c2:
                 if st.button("Log In", key="nav_login", use_container_width=True):
                     st.session_state.page = "Login"
                     st.rerun()
-            with c3:
+            with c2:
                 if st.button("Registreren", key="nav_register", use_container_width=True, type="primary"):
                     st.session_state.page = "Register"
                     st.rerun()
@@ -97,26 +93,27 @@ def render_navbar():
         # NAVIGATIE WEL INGELOGD
         col_logo, col_menu, col_user = st.columns([2, 5, 2])
         with col_logo:
+            # Deze knop brengt je naar Home
             if st.button("☁️ DroneLuxe", key="logo_home_user"):
                 st.session_state.page = "Home"
                 st.rerun()
         with col_menu:
             # Bepaal welke index getoond moet worden op basis van actieve pagina
-            page_to_index = {"Home": 0, "Editor": 1, "Gallery": 2, "Account": 3}
+            # We hebben nu 3 opties in het segmented control menu
+            page_to_index = {"Editor": 0, "Gallery": 1, "Account": 2}
+            
+            # Als we op "Home" zijn, selecteren we standaard niks of de Editor
             default_index = page_to_index.get(st.session_state.page, 0)
             
-            # Horizontale navigatie tabs
+            # Horizontale navigatie tabs (Home knop is hier nu weg!)
             selected = st.segmented_control(
                 "Navigatie",
-                options=["🏠 Home", "✨ Editor", "🖼️ Mijn Galerij", "👤 Mijn Account"],
-                default=["🏠 Home", "✨ Editor", "🖼️ Mijn Galerij", "👤 Mijn Account"][default_index],
+                options=["✨ Editor", "🖼️ Mijn Galerij", "👤 Mijn Account"],
+                default=["✨ Editor", "🖼️ Mijn Galerij", "👤 Mijn Account"][default_index],
                 label_visibility="collapsed"
             )
             
-            if selected == "🏠 Home" and st.session_state.page != "Home":
-                st.session_state.page = "Home"
-                st.rerun()
-            elif selected == "✨ Editor" and st.session_state.page != "Editor":
+            if selected == "✨ Editor" and st.session_state.page != "Editor":
                 st.session_state.page = "Editor"
                 st.rerun()
             elif selected == "🖼️ Mijn Galerij" and st.session_state.page != "Gallery":
