@@ -87,33 +87,50 @@ if st.session_state.session_data is not None:
 def render_navbar():
     if st.session_state.user is None:
         # NAVIGATIE NIET INGELOGD
-        col_logo, col_buttons = st.columns([3, 1])
+        col_logo, col_buttons = st.columns([2, 2])
         with col_logo:
-            st.markdown("<div style='padding-top: 10px;'><span style='font-size: 24px; font-weight: 800; color: #00C9FF;'>☁️ DroneLuxe</span> <span style='color: #666;'>| Premium Photo Cloud</span></div>", unsafe_allow_html=True)
+            # Als je op de titel klikt, ga je ook direct naar Home
+            if st.button("☁️ DroneLuxe | Premium Photo Cloud", key="logo_home", variant="text"):
+                st.session_state.page = "Home"
+                st.rerun()
         with col_buttons:
-            c1, c2 = st.columns(2)
+            c1, c2, c3 = st.columns(3)
             with c1:
+                if st.button("🏠 Home", key="nav_home_guest", use_container_width=True):
+                    st.session_state.page = "Home"
+                    st.rerun()
+            with c2:
                 if st.button("Log In", key="nav_login", use_container_width=True):
                     st.session_state.page = "Login"
                     st.rerun()
-            with c2:
+            with c3:
                 if st.button("Registreren", key="nav_register", use_container_width=True, type="primary"):
                     st.session_state.page = "Register"
                     st.rerun()
     else:
         # NAVIGATIE WEL INGELOGD
-        col_logo, col_menu, col_user = st.columns([2, 4, 2])
+        col_logo, col_menu, col_user = st.columns([2, 5, 2])
         with col_logo:
-            st.markdown("<div style='padding-top: 10px;'><span style='font-size: 24px; font-weight: 800; color: #00C9FF;'>☁️ DroneLuxe</span></div>", unsafe_allow_html=True)
+            if st.button("☁️ DroneLuxe", key="logo_home_user", variant="text"):
+                st.session_state.page = "Home"
+                st.rerun()
         with col_menu:
-            # Horizontale pagina selectie
+            # We bepalen welke index geselecteerd moet staan op basis van de huidige pagina
+            page_to_index = {"Home": 0, "Editor": 1, "Gallery": 2, "Account": 3}
+            default_index = page_to_index.get(st.session_state.page, 1)
+            
+            # Horizontale pagina selectie inclusief Home!
             selected = st.segmented_control(
                 "Navigatie",
-                options=["✨ Editor", "🖼️ Mijn Galerij", "👤 Mijn Account"],
-                default="✨ Editor",
+                options=["🏠 Home", "✨ Editor", "🖼️ Mijn Galerij", "👤 Mijn Account"],
+                default=["🏠 Home", "✨ Editor", "🖼️ Mijn Galerij", "👤 Mijn Account"][default_index],
                 label_visibility="collapsed"
             )
-            if selected == "✨ Editor" and st.session_state.page != "Editor":
+            
+            if selected == "🏠 Home" and st.session_state.page != "Home":
+                st.session_state.page = "Home"
+                st.rerun()
+            elif selected == "✨ Editor" and st.session_state.page != "Editor":
                 st.session_state.page = "Editor"
                 st.rerun()
             elif selected == "🖼️ Mijn Galerij" and st.session_state.page != "Gallery":
@@ -131,7 +148,6 @@ def render_navbar():
                 st.session_state.page = "Home"
                 st.rerun()
     st.write("---")
-
 render_navbar()
 
 # --- FOTO BEWERKINGSHULPMIDDELEN ---
