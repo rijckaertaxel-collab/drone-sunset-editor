@@ -6,36 +6,27 @@ import requests
 from io import BytesIO
 from supabase import create_client, Client
 
-# --- 1. SUPABASE CONNECTIE CONTROLE ---
-@st.cache_resource
-def init_connection():
-    if "SUPABASE_URL" not in st.secrets or "SUPABASE_KEY" not in st.secrets:
-        st.error("❌ De Secrets (SUPABASE_URL of SUPABASE_KEY) zijn niet gevonden in je Streamlit Dashboard!")
-        st.stop()
-        
-    url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"]
-    return create_client(url, key)
-
-try:
-    supabase = init_connection()
-except Exception as e:
-    st.error(f"⚠️ Verbinding met Supabase mislukt tijdens het opstarten: {e}")
-    st.stop()
-
-# --- 2. SESSIE BEHEREN ---
-if 'user' not in st.session_state:
-    st.session_state.user = None
-
-# Pagina instellingen
+# Pagina instellingen (Moet ALTIJD bovenaan staan!)
 st.set_page_config(page_title="Drone Photo Editor Cloud", page_icon="☁️", layout="centered")
 st.title("☁️ Drone & Sunset Editor (Cloud)")
 
-# --- 3. INLOGSYSTEEM ---
+# --- 1. SUPABASE CLIENT INITIALISEREN PER SESSIE (VEILIG EN UNIEK) ---
+if "SUPABASE_URL" not in st.secrets or "SUPABASE_KEY" not in st.secrets:
+    st.error("❌ De Secrets (SUPABASE_URL of SUPABASE_KEY) zijn niet gevonden in je Streamlit Dashboard!")
+    st.stop()
+
+# We maken de client aan binnen de session_state zodat de login-token per browser herinnerd wordt
+if 'supabase' not in st.session_state:
+    st.session_state.supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+
+if 'user' not in st.session_state:
+    st.session_state.user = None
+
+# --- 2. INLOGSYSTEEM ---
 if st.session_state.user is None:
     st.info("Log in of maak gratis een account aan om de cloud-editor en je persoonlijke galerij te gebruiken.")
     
-    with St.container():
+    with st.container():
         email = st.text_input("E-mailadres", placeholder="voorbeeld@email.com")
         password = st.text_input("Wachtwoord (minimaal 6 tekens)", type="password")
         
@@ -46,7 +37,7 @@ if st.session_state.user is None:
                     st.warning("Vul alstublieft beide velden in.")
                 else:
                     try:
-                        response = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                        response = st.session_state.supabase.auth.sign_in_with_password({"email": email, "password": password})
                         st.session_state.user = response.user
                         st.success("Succesvol ingelogd!")
                         st.rerun()
@@ -60,7 +51,7 @@ if st.session_state.user is None:
                     st.warning("Je wachtwoord moet minimaal 6 tekens lang zijn!")
                 else:
                     try:
-                        response = supabase.auth.sign_up({"email": email, "password": password})
+                        response = st.session_state.supabase.auth.sign_up({"email": email, "password": password})
                         st.success("Account aangemaakt! Je kunt nu direct inloggen.")
                     except Exception as e:
                         st.error(f"Fout bij registreren: {e}")
@@ -72,8 +63,9 @@ with c1:
     st.success(f"👋 Welkom, {st.session_state.user.email}")
 with c2:
     if st.button("Uitloggen", use_container_width=True):
-        supabase.auth.sign_out()
+        st.session_state.supabase.auth.sign_out()
         st.session_state.user = None
+        st.session_state.supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"]) # Reset client naar anoniem
         st.rerun()
 
 st.write("---")
@@ -162,49 +154,43 @@ if uploaded_file is not None:
             if st.button("Save to Cloud ☁️"):
                 with st.spinner("Bezig met opslaan..."):
                     try:
-                        # Bestandsnaam: [USER_ID]/[RANDOM_ID].jpg
                         file_name = f"{st.session_state.user.id}/{uuid.uuid4().hex}.jpg"
-                        supabase.storage.from_("fotos").upload(
+                        # We uploaden nu met de unieke session-state client!
+                        st.session_state.supabase.storage.from_("fotos").upload(
                             path=file_name, 
                             file=file_bytes, 
                             file_options={"content-type": "image/jpeg"}
                         )
-                        st.success("Succesvol opgeslagen in jouw cloud-gallerij!")
-                        st.rerun() # Ververs de pagina om de foto meteen in de galerij te tonen!
+                        st.success("Succesvol opgeslagen!")
+                        st.rerun()
                     except Exception as e:
                         st.error(f"Fout bij opslaan: {e}")
 
-# --- 4. PERSOONLIJKE CLOUD GALERIJ (ALTIJD ZICHTBAAR ONDERAAN) ---
+# --- 4. PERSOONLIJKE CLOUD GALERIJ ---
 st.write("---")
 st.header("🖼️ Mijn Cloud Galerij")
-st.write("Hier zie je jouw persoonlijk opgeslagen foto's. Andere gebruikers kunnen deze niet bekijken.")
+st.write("Hier zie je jouw persoonlijk opgeslagen foto's.")
 
 try:
-    # Haal de lijst met bestanden op uit de map van de ingelogde gebruiker
     user_folder = st.session_state.user.id
-    files = supabase.storage.from_("fotos").list(user_folder)
+    # We halen de bestanden op met de unieke session-state client!
+    files = st.session_state.supabase.storage.from_("fotos").list(user_folder)
     
     if not files or len(files) == 0:
-        st.info("Je hebt nog geen foto's opgeslagen in de cloud. Bewerk een foto en klik op 'Save to Cloud'!")
+        st.info("Je hebt nog geen foto's opgeslagen in de cloud.")
     else:
-        # Toon foto's in een grid van 3 kolommen
         cols = st.columns(3)
         for index, file_info in enumerate(files):
             file_name = file_info['name']
             
-            # Alleen afbeeldingen laden (.jpg bestanden)
-            if file_name.endswith('.jpg'):
+            if file_name.endswith('.jpg') or file_name.endswith('.png') or file_name.endswith('.jpeg'):
                 full_path = f"{user_folder}/{file_name}"
+                image_url = st.session_state.supabase.storage.from_("fotos").get_public_url(full_path)
                 
-                # Haal de publieke URL op
-                image_url = supabase.storage.from_("fotos").get_public_url(full_path)
-                
-                # Toon de foto in de juiste kolom
                 col_index = index % 3
                 with cols[col_index]:
                     st.image(image_url, use_container_width=True)
                     
-                    # Kleine downloadknop voor elke foto in de cloud
                     response = requests.get(image_url)
                     if response.status_code == 200:
                         st.download_button(
@@ -216,4 +202,4 @@ try:
                             use_container_width=True
                         )
 except Exception as e:
-    st.error(f"Kan je galerij niet laden. Controleer of de map bestaat of dat de rechten goed staan: {e}")
+    st.error(f"Kan je galerij niet laden: {e}")
