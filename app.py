@@ -10,17 +10,30 @@ from supabase import create_client, Client
 st.set_page_config(page_title="Drone Photo Editor Cloud", page_icon="☁️", layout="centered")
 st.title("☁️ Drone & Sunset Editor (Cloud)")
 
-# --- 1. SUPABASE CLIENT INITIALISEREN PER SESSIE (VEILIG EN UNIEK) ---
+# --- 1. SUPABASE CLIENT INITIALISEREN ---
 if "SUPABASE_URL" not in st.secrets or "SUPABASE_KEY" not in st.secrets:
     st.error("❌ De Secrets (SUPABASE_URL of SUPABASE_KEY) zijn niet gevonden in je Streamlit Dashboard!")
     st.stop()
 
-# We maken de client aan binnen de session_state zodat de login-token per browser herinnerd wordt
+# Maak de client eenmalig aan per sessie
 if 'supabase' not in st.session_state:
     st.session_state.supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
 if 'user' not in st.session_state:
     st.session_state.user = None
+
+if 'session_data' not in st.session_state:
+    st.session_state.session_data = None
+
+# Als we al inloggegevens hebben opgeslagen, herstellen we de actieve sessie
+if st.session_state.session_data is not None:
+    try:
+        st.session_state.supabase.auth.set_session(
+            st.session_state.session_data["access_token"],
+            st.session_state.session_data["refresh_token"]
+        )
+    except Exception:
+        pass
 
 # --- 2. INLOGSYSTEEM ---
 if st.session_state.user is None:
@@ -39,6 +52,11 @@ if st.session_state.user is None:
                     try:
                         response = st.session_state.supabase.auth.sign_in_with_password({"email": email, "password": password})
                         st.session_state.user = response.user
+                        # Sla de tokens op zodat de storage client ze ook kan gebruiken!
+                        st.session_state.session_data = {
+                            "access_token": response.session.access_token,
+                            "refresh_token": response.session.refresh_token
+                        }
                         st.success("Succesvol ingelogd!")
                         st.rerun()
                     except Exception as e:
@@ -65,7 +83,7 @@ with c2:
     if st.button("Uitloggen", use_container_width=True):
         st.session_state.supabase.auth.sign_out()
         st.session_state.user = None
-        st.session_state.supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"]) # Reset client naar anoniem
+        st.session_state.session_data = None
         st.rerun()
 
 st.write("---")
@@ -154,8 +172,15 @@ if uploaded_file is not None:
             if st.button("Save to Cloud ☁️"):
                 with st.spinner("Bezig met opslaan..."):
                     try:
+                        # Zorg er 100% voor dat de token actief is bij het uploaden
+                        if st.session_state.session_data:
+                            st.session_state.supabase.auth.set_session(
+                                st.session_state.session_data["access_token"],
+                                st.session_state.session_data["refresh_token"]
+                            )
+                        
                         file_name = f"{st.session_state.user.id}/{uuid.uuid4().hex}.jpg"
-                        # We uploaden nu met de unieke session-state client!
+                        
                         st.session_state.supabase.storage.from_("fotos").upload(
                             path=file_name, 
                             file=file_bytes, 
@@ -172,8 +197,13 @@ st.header("🖼️ Mijn Cloud Galerij")
 st.write("Hier zie je jouw persoonlijk opgeslagen foto's.")
 
 try:
+    if st.session_state.session_data:
+        st.session_state.supabase.auth.set_session(
+            st.session_state.session_data["access_token"],
+            st.session_state.session_data["refresh_token"]
+        )
+        
     user_folder = st.session_state.user.id
-    # We halen de bestanden op met de unieke session-state client!
     files = st.session_state.supabase.storage.from_("fotos").list(user_folder)
     
     if not files or len(files) == 0:
