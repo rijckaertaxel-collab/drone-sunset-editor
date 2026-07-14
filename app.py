@@ -5,6 +5,8 @@ import uuid
 import requests
 from io import BytesIO
 from supabase import create_client, Client
+from streamlit_cookies_manager import EncryptedCookieManager
+import os
 
 # --- 1. PAGINA INSTELLINGEN & CSS STYLING ---
 st.set_page_config(page_title="DroneLuxe Editor & Cloud", page_icon="☁️", layout="wide")
@@ -41,7 +43,21 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. SUPABASE CONNECTIE ---
+# --- 2. COOKIE MANAGER INITIALISATIE ---
+# We gebruiken gecodeerde cookies zodat de tokens veilig in de browser van de gebruiker staan.
+# Zorg dat je eventueel een 'COOKIES_PASSWORD' in je Streamlit Secrets zet voor extra veiligheid, 
+# anders valt hij terug op een standaard wachtwoord.
+cookie_password = st.secrets.get("COOKIES_PASSWORD", "EenSuperGeheimWachtwoordVanMinimaal16Tekens!")
+cookies = EncryptedCookieManager(
+    prefix="droneluxe/auth/",
+    password=cookie_password
+)
+
+if not cookies.ready():
+    # Wacht kort totdat de browser de cookies heeft doorgestuurd naar Streamlit
+    st.stop()
+
+# --- 3. SUPABASE CONNECTIE ---
 if "SUPABASE_URL" not in st.secrets or "SUPABASE_KEY" not in st.secrets:
     st.error("❌ De Secrets (SUPABASE_URL of SUPABASE_KEY) zijn niet gevonden in je Streamlit Dashboard!")
     st.stop()
@@ -59,8 +75,31 @@ if 'session_data' not in st.session_state:
 if 'page' not in st.session_state:
     st.session_state.page = "Home"
 
-# Sessie herstellen indien aanwezig
-if st.session_state.session_data is not None:
+# AUTOMATISCH INLOGGEN VIA COOKIES:
+# Als de session_state leeg is, maar we hebben wel tokens in de browser cookies, herstellen we de sessie!
+if st.session_state.user is None:
+    access_token = cookies.get("access_token")
+    refresh_token = cookies.get("refresh_token")
+    
+    if access_token and refresh_token:
+        try:
+            response = st.session_state.supabase.auth.set_session(access_token, refresh_token)
+            st.session_state.user = response.user
+            st.session_state.session_data = {
+                "access_token": response.session.access_token,
+                "refresh_token": response.session.refresh_token
+            }
+            # Als we succesvol hersteld zijn en we stonden op Home/Login, sturen we door naar de Editor
+            if st.session_state.page in ["Home", "Login", "Register"]:
+                st.session_state.page = "Editor"
+        except Exception:
+            # Als de tokens verlopen of ongeldig zijn, schonen we de cookies op
+            cookies.pop("access_token", None)
+            cookies.pop("refresh_token", None)
+            cookies.save()
+
+# Handmatige sessie herstelling indien session_state wel gevuld is
+elif st.session_state.session_data is not None:
     try:
         st.session_state.supabase.auth.set_session(
             st.session_state.session_data["access_token"],
@@ -69,13 +108,13 @@ if st.session_state.session_data is not None:
     except Exception:
         pass
 
-# --- 3. DYNAMISCHE NAVIGATIEBALK ---
+
+# --- 4. DYNAMISCHE NAVIGATIEBALK ---
 def render_navbar():
     if st.session_state.user is None:
         # NAVIGATIE NIET INGELOGD
         col_logo, col_buttons = st.columns([2, 2])
         with col_logo:
-            # Deze knop brengt je naar Home
             if st.button("☁️ DroneLuxe | Premium Cloud", key="logo_home"):
                 st.session_state.page = "Home"
                 st.rerun()
@@ -93,19 +132,13 @@ def render_navbar():
         # NAVIGATIE WEL INGELOGD
         col_logo, col_menu, col_user = st.columns([2, 5, 2])
         with col_logo:
-            # Deze knop brengt je naar Home
             if st.button("☁️ DroneLuxe", key="logo_home_user"):
                 st.session_state.page = "Home"
                 st.rerun()
         with col_menu:
-            # Bepaal welke index getoond moet worden op basis van actieve pagina
-            # We hebben nu 3 opties in het segmented control menu
             page_to_index = {"Editor": 0, "Gallery": 1, "Account": 2}
-            
-            # Als we op "Home" zijn, selecteren we standaard niks of de Editor
             default_index = page_to_index.get(st.session_state.page, 0)
             
-            # Horizontale navigatie tabs (Home knop is hier nu weg!)
             selected = st.segmented_control(
                 "Navigatie",
                 options=["✨ Editor", "🖼️ Mijn Galerij", "👤 Mijn Account"],
@@ -125,7 +158,13 @@ def render_navbar():
         with col_user:
             st.markdown(f"<div style='text-align: right; padding-top: 5px; font-size: 13px; color: #aaa;'>Ingelogd als:<br><b>{st.session_state.user.email}</b></div>", unsafe_allow_html=True)
             if st.button("Uitloggen", key="nav_logout", use_container_width=True):
+                # Uitloggen bij Supabase
                 st.session_state.supabase.auth.sign_out()
+                # Cookies wissen uit de browser
+                cookies.pop("access_token", None)
+                cookies.pop("refresh_token", None)
+                cookies.save()
+                # Session state legen
                 st.session_state.user = None
                 st.session_state.session_data = None
                 st.session_state.page = "Home"
@@ -264,6 +303,12 @@ elif st.session_state.page in ["Login", "Register"]:
                                 "access_token": response.session.access_token,
                                 "refresh_token": response.session.refresh_token
                             }
+                            
+                            # OPSLAAN IN COOKIES: Sla tokens op in de browser voor persistentie
+                            cookies["access_token"] = response.session.access_token
+                            cookies["refresh_token"] = response.session.refresh_token
+                            cookies.save()
+                            
                             st.success("Succesvol ingelogd!")
                             st.session_state.page = "Editor"
                             st.rerun()
