@@ -213,23 +213,31 @@ try:
         for index, file_info in enumerate(files):
             file_name = file_info['name']
             
-            if file_name.endswith('.jpg') or file_name.endswith('.png') or file_name.endswith('.jpeg'):
+            # Voorkom dat placeholders of lege namen geladen worden
+            if file_name and (file_name.endswith('.jpg') or file_name.endswith('.png') or file_name.endswith('.jpeg')):
                 full_path = f"{user_folder}/{file_name}"
-                image_url = st.session_state.supabase.storage.from_("fotos").get_public_url(full_path)
                 
-                col_index = index % 3
-                with cols[col_index]:
-                    st.image(image_url, use_container_width=True)
+                try:
+                    # FIX: Maak een beveiligde, tijdelijke URL aan die wél langs de RLS-beveiliging komt (60 seconden geldig)
+                    sign_response = st.session_state.supabase.storage.from_("fotos").create_signed_url(full_path, 60)
+                    image_url = sign_response['signedURL']
                     
-                    response = requests.get(image_url)
-                    if response.status_code == 200:
-                        st.download_button(
-                            label="Download 📥",
-                            data=response.content,
-                            file_name=f"cloud_{file_name}",
-                            mime="image/jpeg",
-                            key=f"dl_{file_name}",
-                            use_container_width=True
-                        )
+                    col_index = index % 3
+                    with cols[col_index]:
+                        st.image(image_url, use_container_width=True)
+                        
+                        # Haal de data veilig op voor de downloadknop
+                        response = requests.get(image_url)
+                        if response.status_code == 200:
+                            st.download_button(
+                                label="Download 📥",
+                                data=response.content,
+                                file_name=f"cloud_{file_name}",
+                                mime="image/jpeg",
+                                key=f"dl_{file_name}_{index}", # Unieke key per knop
+                                use_container_width=True
+                            )
+                except Exception as e:
+                    st.error(f"Fout bij laden van een afbeelding: {e}")
 except Exception as e:
     st.error(f"Kan je galerij niet laden: {e}")
