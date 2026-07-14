@@ -279,17 +279,15 @@ elif st.session_state.page in ["Login", "Register"]:
                         except Exception as e:
                             st.error(f"Registratie mislukt: {e}")
         
-        # Wissel-linkje onder het formulier
+        # FIX: variant="secondary" is hier verwijderd om de crash te voorkomen!
         if st.session_state.page == "Login":
-            if st.button("Nog geen account? Registreer hier", variant="secondary"):
+            if st.button("Nog geen account? Registreer hier", use_container_width=True):
                 st.session_state.page = "Register"
                 st.rerun()
         else:
-            if st.button("Al een account? Log hier in", variant="secondary"):
+            if st.button("Al een account? Log hier in", use_container_width=True):
                 st.session_state.page = "Login"
                 st.rerun()
-
-
 # ==================== PAGINA: EDITOR (WEL INGELOGD) ====================
 elif st.session_state.page == "Editor":
     st.subheader("⚡ Premium Photo Editor")
